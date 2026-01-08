@@ -1,0 +1,10 @@
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "secureflow-ai"
+resolve_s3 = true
+s3_prefix = "secureflow-ai"
+region = "af-south-1"
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "BedrockModelId=anthropic.claude-sonnet-4-5-20250929-v1:0"
+confirm_changeset = true

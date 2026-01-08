@@ -1,0 +1,9 @@
+{
+  "input_type": "iac",
+  "language": "terraform",
+  "content": "resource \"aws_s3_bucket\" \"logs\" { bucket = \"my-logs-bucket\" }\n\nresource \"aws_s3_bucket_public_access_block\" \"logs\" {\n  bucket = aws_s3_bucket.logs.id\n  block_public_acls   = false\n  block_public_policy = false\n}\n",
+  "context": {
+    "app_name": "demo",
+    "environment": "dev"
+  }
+}

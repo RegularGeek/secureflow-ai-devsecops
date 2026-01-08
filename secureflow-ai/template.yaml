@@ -1,0 +1,112 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: SecureFlow AI - Bedrock-powered security review API (Free Tier friendly)
+
+Globals:
+  Function:
+    Timeout: 20
+    MemorySize: 256
+    Runtime: python3.11
+    Tracing: Active
+    Environment:
+      Variables:
+        POWERTOOLS_SERVICE_NAME: secureflow-ai
+        LOG_LEVEL: INFO
+
+Parameters:
+  BedrockModelId:
+    Type: String
+    Default: anthropic.claude-sonnet-4-5-20250929-v1:0
+    Description: Bedrock model ID (Claude Sonnet 4.5 is available in af-south-1)
+
+Resources:
+  SecureFlowApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: prod
+      Cors:
+        AllowMethods: "'GET,POST,OPTIONS'"
+        AllowHeaders: "'content-type'"
+        AllowOrigin: "'*'"
+
+  HistoryTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+
+  LogBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  AnalyzeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/analyze/
+      Handler: app.lambda_handler
+      Environment:
+        Variables:
+          BEDROCK_MODEL_ID: !Ref BedrockModelId
+          HISTORY_TABLE: !Ref HistoryTable
+          LOG_BUCKET: !Ref LogBucket
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref HistoryTable
+        - S3WritePolicy:
+            BucketName: !Ref LogBucket
+        - Statement:
+            Effect: Allow
+            Action:
+              - bedrock:InvokeModel
+              - bedrock:InvokeModelWithResponseStream
+            Resource: "*"
+      Events:
+        Analyze:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SecureFlowApi
+            Path: /analyze
+            Method: post
+
+  HistoryFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/history/
+      Handler: app.lambda_handler
+      Environment:
+        Variables:
+          HISTORY_TABLE: !Ref HistoryTable
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref HistoryTable
+      Events:
+        History:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SecureFlowApi
+            Path: /history
+            Method: get
+
+Outputs:
+  ApiUrl:
+    Description: API endpoint base URL
+    Value: !Sub "https://${SecureFlowApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
+  HistoryTableName:
+    Description: DynamoDB table for analysis history
+    Value: !Ref HistoryTable
+  LogBucketName:
+    Description: S3 bucket for logs
+    Value: !Ref LogBucket
